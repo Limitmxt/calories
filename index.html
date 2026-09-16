@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <title>Cal Photo</title>
+  <meta name="description" content="Photo-based calorie and macro tracker. Runs entirely on your device.">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Cal Photo">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ONBOARDING -->
+    <section id="screen-onboarding" class="screen hidden">
+      <div class="ob-progress"><div class="ob-progress-bar" id="ob-bar"></div></div>
+      <div class="ob-pages">
+
+        <div class="ob-page" data-page="0">
+          <div class="ob-hero">
+            <div class="ob-logo">🍎</div>
+            <h1>Calorie tracking<br>made easy</h1>
+            <p class="muted">Snap a photo of your meal and get calories, protein, carbs and fat in seconds. Everything stays on your phone.</p>
+          </div>
+        </div>
+
+        <div class="ob-page" data-page="1">
+          <h2>Choose your gender</h2>
+          <p class="muted">Used to calculate your daily calorie needs.</p>
+          <div class="choice-list" data-field="gender">
+            <button class="choice" data-value="male">Male</button>
+            <button class="choice" data-value="female">Female</button>
+          </div>
+        </div>
+
+        <div class="ob-page" data-page="2">
+          <h2>About you</h2>
+          <p class="muted">Height, weight and age drive the calorie estimate.</p>
+          <div class="seg" data-field="units">
+            <button class="seg-btn active" data-value="metric">Metric</button>
+            <button class="seg-btn" data-value="imperial">Imperial</button>
+          </div>
+          <div class="field-row" id="metric-fields">
+            <label>Height (cm)<input type="number" id="ob-height-cm" inputmode="decimal" placeholder="175"></label>
+            <label>Weight (kg)<input type="number" id="ob-weight-kg" inputmode="decimal" placeholder="75"></label>
+          </div>
+          <div class="field-row hidden" id="imperial-fields">
+            <label>Height (ft)<input type="number" id="ob-height-ft" inputmode="numeric" placeholder="5"></label>
+            <label>Height (in)<input type="number" id="ob-height-in" inputmode="numeric" placeholder="9"></label>
+            <label>Weight (lb)<input type="number" id="ob-weight-lb" inputmode="decimal" placeholder="165"></label>
+          </div>
+          <label>Age<input type="number" id="ob-age" inputmode="numeric" placeholder="28"></label>
+        </div>
+
+        <div class="ob-page" data-page="3">
+          <h2>How active are you?</h2>
+          <div class="choice-list" data-field="activity">
+            <button class="choice" data-value="1.2"><b>Sedentary</b><span>Desk job, little exercise</span></button>
+            <button class="choice" data-value="1.375"><b>Lightly active</b><span>Exercise 1–3 days a week</span></button>
+            <button class="choice" data-value="1.55"><b>Moderately active</b><span>Exercise 3–5 days a week</span></button>
+            <button class="choice" data-value="1.725"><b>Very active</b><span>Hard exercise 6–7 days a week</span></button>
+          </div>
+        </div>
+
+        <div class="ob-page" data-page="4">
+          <h2>What is your goal?</h2>
+          <div class="choice-list" data-field="goal">
+            <button class="choice" data-value="lose">Lose weight</button>
+            <button class="choice" data-value="maintain">Maintain</button>
+            <button class="choice" data-value="gain">Gain weight</button>
+          </div>
+          <div id="ob-rate-wrap" class="hidden">
+            <label>Target pace: <b id="ob-rate-label">0.5 kg / week</b>
+              <input type="range" id="ob-rate" min="0.1" max="1.0" step="0.1" value="0.5">
+            </label>
+            <p class="muted small">Up to about 0.5 kg (1 lb) per week is the sustainable range. Faster is harder to stick to.</p>
+          </div>
+        </div>
+
+        <div class="ob-page" data-page="5">
+          <h2>Connect the photo AI</h2>
+          <p class="muted">The app uses Google's Gemini API to read your photos. The free tier costs nothing and needs no card. Your key is stored only on this device.</p>
+          <ol class="steps">
+            <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account.</li>
+            <li>Tap <b>Create API key</b> and copy it.</li>
+            <li>Paste it below.</li>
+          </ol>
+          <label>Gemini API key<input type="password" id="ob-gemini-key" placeholder="AIza..." autocomplete="off"></label>
+          <button class="btn-secondary" id="ob-test-key">Test key</button>
+          <p id="ob-key-status" class="small"></p>
+          <p class="muted small">You can skip this and add the key later in Settings. Without it, photo scanning will not work but manual logging will.</p>
+        </div>
+
+        <div class="ob-page" data-page="6">
+          <h2>Your daily plan</h2>
+          <p class="muted">Estimated from your details (Mifflin-St Jeor). You can edit any number later in Settings.</p>
+          <div class="plan-grid">
+            <div class="plan-card"><span class="plan-num" id="plan-cal">0</span><span>Calories</span></div>
+            <div class="plan-card"><span class="plan-num" id="plan-pro">0g</span><span>Protein</span></div>
+            <div class="plan-card"><span class="plan-num" id="plan-carb">0g</span><span>Carbs</span></div>
+            <div class="plan-card"><span class="plan-num" id="plan-fat">0g</span><span>Fat</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-footer">
+        <button class="btn-ghost" id="ob-back">Back</button>
+        <button class="btn-primary" id="ob-next">Get started</button>
+      </div>
+    </section>
+
+    <!-- HOME -->
+    <section id="screen-home" class="screen hidden">
+      <header class="topbar">
+        <div class="brand">🍎 Cal Photo</div>
+        <div class="streak" id="streak">🔥 0</div>
+      </header>
+      <div class="week-strip" id="week-strip"></div>
+
+      <div class="card summary-card">
+        <div class="cal-left">
+          <div class="cal-left-num"><span id="cal-left">0</span></div>
+          <div class="muted" id="cal-left-label">Calories left</div>
+        </div>
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120" class="ring">
+            <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+            <circle class="ring-fg" id="ring-cal" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="ring-icon">🔥</div>
+        </div>
+      </div>
+
+      <div class="macro-row">
+        <div class="card macro-card">
+          <div class="macro-num"><span id="pro-left">0g</span></div>
+          <div class="muted small">Protein left</div>
+          <div class="mini-ring"><svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="24"></circle><circle class="ring-fg pro" id="ring-pro" cx="30" cy="30" r="24"></circle></svg><span>🥩</span></div>
+        </div>
+        <div class="card macro-card">
+          <div class="macro-num"><span id="carb-left">0g</span></div>
+          <div class="muted small">Carbs left</div>
+          <div class="mini-ring"><svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="24"></circle><circle class="ring-fg carb" id="ring-carb" cx="30" cy="30" r="24"></circle></svg><span>🌾</span></div>
+        </div>
+        <div class="card macro-card">
+          <div class="macro-num"><span id="fat-left">0g</span></div>
+          <div class="muted small">Fat left</div>
+          <div class="mini-ring"><svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="24"></circle><circle class="ring-fg fat" id="ring-fat" cx="30" cy="30" r="24"></circle></svg><span>🥑</span></div>
+        </div>
+      </div>
+
+      <h3 class="section-title">Recently logged</h3>
+      <div id="meal-list" class="meal-list"></div>
+      <div id="meal-empty" class="empty hidden">
+        <div class="empty-icon">📷</div>
+        <p>Nothing logged yet.<br>Tap <b>+</b> to scan your first meal.</p>
+      </div>
+      <div class="bottom-space"></div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section id="screen-analytics" class="screen hidden">
+      <header class="topbar"><div class="brand">Progress</div></header>
+
+      <div class="card">
+        <div class="card-head"><b>Weight</b><button class="btn-small" id="log-weight-btn">Log weight</button></div>
+        <div class="weight-big"><span id="weight-current">–</span><span class="muted small" id="weight-goal-text"></span></div>
+        <div id="weight-chart" class="chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Calories this week</b><span class="muted small" id="week-avg"></span></div>
+        <div id="cal-chart" class="chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Macros this week (daily avg)</b></div>
+        <div class="macro-avg" id="macro-avg"></div>
+      </div>
+      <div class="bottom-space"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="screen-settings" class="screen hidden">
+      <header class="topbar"><div class="brand">Settings</div></header>
+
+      <div class="card">
+        <div class="card-head"><b>Daily goals</b></div>
+        <div class="field-row">
+          <label>Calories<input type="number" id="set-cal" inputmode="numeric"></label>
+          <label>Protein (g)<input type="number" id="set-pro" inputmode="numeric"></label>
+          <label>Carbs (g)<input type="number" id="set-carb" inputmode="numeric"></label>
+          <label>Fat (g)<input type="number" id="set-fat" inputmode="numeric"></label>
+        </div>
+        <div class="row-btns">
+          <button class="btn-secondary" id="set-recalc">Recalculate from my details</button>
+          <button class="btn-primary" id="set-save-goals">Save goals</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Personal details</b></div>
+        <div class="field-row">
+          <label>Gender<select id="set-gender"><option value="male">Male</option><option value="female">Female</option></select></label>
+          <label>Age<input type="number" id="set-age" inputmode="numeric"></label>
+          <label>Height (cm)<input type="number" id="set-height" inputmode="decimal"></label>
+          <label>Weight (kg)<input type="number" id="set-weight" inputmode="decimal"></label>
+          <label>Activity<select id="set-activity">
+            <option value="1.2">Sedentary</option><option value="1.375">Lightly active</option>
+            <option value="1.55">Moderately active</option><option value="1.725">Very active</option></select></label>
+          <label>Goal<select id="set-goal"><option value="lose">Lose</option><option value="maintain">Maintain</option><option value="gain">Gain</option></select></label>
+          <label>Pace (kg/week)<input type="number" id="set-rate" step="0.1" min="0.1" max="1" inputmode="decimal"></label>
+          <label>Units<select id="set-units"><option value="metric">Metric</option><option value="imperial">Imperial</option></select></label>
+        </div>
+        <button class="btn-primary" id="set-save-profile">Save details</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Photo AI</b></div>
+        <label>Provider<select id="set-provider">
+          <option value="gemini">Google Gemini (free tier)</option>
+          <option value="claude">Anthropic Claude (paid, per photo)</option>
+        </select></label>
+        <div id="prov-gemini">
+          <label>Gemini API key<input type="password" id="set-gemini-key" placeholder="AIza..." autocomplete="off"></label>
+          <label>Model<select id="set-gemini-model"><option value="gemini-2.5-flash">gemini-2.5-flash</option></select></label>
+          <p class="muted small">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Free-tier limits are per model and shown at <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">aistudio.google.com/rate-limit</a>.</p>
+        </div>
+        <div id="prov-claude" class="hidden">
+          <label>Anthropic API key<input type="password" id="set-claude-key" placeholder="sk-ant-..." autocomplete="off"></label>
+          <label>Model<input type="text" id="set-claude-model" value="claude-opus-5"></label>
+          <p class="muted small">Anthropic has no free tier. Each photo is billed to your account. Only use this if you have decided to pay.</p>
+        </div>
+        <div class="row-btns">
+          <button class="btn-secondary" id="set-test-ai">Test connection</button>
+          <button class="btn-primary" id="set-save-ai">Save</button>
+        </div>
+        <p id="set-ai-status" class="small"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Data</b></div>
+        <p class="muted small">All meals, photos and settings live in this browser only. Export regularly if you care about the history.</p>
+        <div class="row-btns">
+          <button class="btn-secondary" id="export-btn">Export backup</button>
+          <button class="btn-secondary" id="import-btn">Import backup</button>
+          <input type="file" id="import-file" accept="application/json" class="hidden">
+        </div>
+        <button class="btn-danger" id="wipe-btn">Delete all data</button>
+      </div>
+      <p class="muted small center" id="version-line"></p>
+      <div class="bottom-space"></div>
+    </section>
+
+    <!-- RESULT / MEAL DETAIL -->
+    <section id="screen-result" class="screen hidden">
+      <div class="result-img-wrap">
+        <img id="result-img" alt="">
+        <div id="result-img-placeholder" class="result-img-ph hidden">🍽️</div>
+        <button class="back-btn" id="result-back">‹</button>
+      </div>
+      <div class="result-body">
+        <div class="result-meta muted small" id="result-time"></div>
+        <input class="result-name" id="result-name" placeholder="Meal name">
+        <div class="servings">
+          <span class="muted small">Servings</span>
+          <button class="step-btn" id="serv-minus">−</button>
+          <span id="serv-val">1</span>
+          <button class="step-btn" id="serv-plus">+</button>
+        </div>
+        <div class="big-cal card"><span>🔥</span><div><b id="r-cal">0</b><span class="muted small">Calories</span></div></div>
+        <div class="macro-row">
+          <div class="card macro-edit"><span>🥩</span><b id="r-pro">0g</b><span class="muted small">Protein</span></div>
+          <div class="card macro-edit"><span>🌾</span><b id="r-carb">0g</b><span class="muted small">Carbs</span></div>
+          <div class="card macro-edit"><span>🥑</span><b id="r-fat">0g</b><span class="muted small">Fat</span></div>
+        </div>
+        <div class="card health-card">
+          <div class="card-head"><b>Health score</b><b id="r-health">–/10</b></div>
+          <div class="bar"><div class="bar-fill" id="r-health-bar"></div></div>
+          <p class="muted small" id="r-notes"></p>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>Ingredients</b><button class="btn-small" id="add-item">+ Add</button></div>
+          <div id="r-items" class="items"></div>
+        </div>
+        <div class="row-btns">
+          <button class="btn-secondary" id="fix-btn">✨ Fix results</button>
+          <button class="btn-primary" id="save-meal">Done</button>
+        </div>
+        <button class="btn-danger hidden" id="delete-meal">Delete meal</button>
+        <div class="bottom-space"></div>
+      </div>
+    </section>
+
+    <!-- NAV -->
+    <nav id="nav" class="nav hidden">
+      <button data-screen="home" class="nav-btn active"><span>🏠</span>Home</button>
+      <button data-screen="analytics" class="nav-btn"><span>📈</span>Progress</button>
+      <button id="add-btn" class="add-btn">+</button>
+      <button data-screen="settings" class="nav-btn"><span>⚙️</span>Settings</button>
+    </nav>
+
+    <!-- ADD SHEET -->
+    <div id="sheet" class="sheet hidden">
+      <div class="sheet-bg"></div>
+      <div class="sheet-body">
+        <div class="sheet-grab"></div>
+        <button class="sheet-opt" id="opt-camera"><span>📷</span><div><b>Scan food</b><small>Take a photo</small></div></button>
+        <button class="sheet-opt" id="opt-gallery"><span>🖼️</span><div><b>Gallery</b><small>Pick an existing photo</small></div></button>
+        <button class="sheet-opt" id="opt-describe"><span>💬</span><div><b>Describe</b><small>Type what you ate</small></div></button>
+        <button class="sheet-opt" id="opt-barcode"><span>🏷️</span><div><b>Barcode</b><small>Packaged food lookup</small></div></button>
+        <button class="sheet-opt" id="opt-manual"><span>✏️</span><div><b>Manual</b><small>Enter numbers yourself</small></div></button>
+        <input type="file" id="file-camera" accept="image/*" capture="environment" class="hidden">
+        <input type="file" id="file-gallery" accept="image/*" class="hidden">
+      </div>
+    </div>
+
+    <!-- GENERIC MODAL -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-bg"></div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p id="loading-text">Analyzing…</p>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="js/db.js"></script>
+  <script src="js/nutrition.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
