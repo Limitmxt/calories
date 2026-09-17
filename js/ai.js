@@ -132,11 +132,11 @@ Return only the JSON object.`;
   async function geminiErr(r) {
     let msg = `HTTP ${r.status}`;
     try { const j = await r.json(); msg = (j.error && j.error.message) || msg; } catch (e) {}
-    if (r.status === 429) return 'Rate limit hit on the free tier. Wait a minute and try again, or pick a different model in Settings.';
-    if (r.status === 400 && /API key/i.test(msg)) return 'Gemini rejected the API key. Check it in Settings.';
-    if (r.status === 403) return 'Gemini refused the request (403). The key may lack permission or the model is not available to you.';
-    if (r.status === 404) return 'Model not found. Choose another model in Settings.';
-    return msg;
+    if (r.status === 429) return 'Rate limit hit on the free tier. Wait a minute and try again, or pick a different model in Settings. (' + msg + ')';
+    if (r.status === 400 && /API key/i.test(msg)) return 'Gemini rejected the API key. Check it in Settings. (' + msg + ')';
+    if (r.status === 403) return 'Gemini permission denied (403): ' + msg;
+    if (r.status === 404) return 'Model not found. Choose another model in Settings. (' + msg + ')';
+    return `Gemini error ${r.status}: ${msg}`;
   }
   async function geminiAnalyze(cfg, { imageB64, text, previous, correction }) {
     const parts = [];
