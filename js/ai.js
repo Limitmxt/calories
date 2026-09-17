@@ -2,6 +2,7 @@
 const AI = (() => {
   const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
   const CLAUDE_BASE = 'https://api.anthropic.com/v1';
+  const OR_BASE = 'https://openrouter.ai/api/v1';
 
   const SYSTEM = `You are a nutrition estimator inside a calorie-tracking app.
 Given a photo (or a text description) of food, identify each distinct food item, estimate its portion from visual cues (plate size, utensils, packaging), and estimate calories and macros per item.
@@ -168,6 +169,55 @@ Return only the JSON object.`;
     return normalize(parseJsonLoose(txt));
   }
 
+  // ---------- OpenRouter (free models, no card) ----------
+  async function openrouterListModels() {
+    const r = await fetch(`${OR_BASE}/models`);
+    if (!r.ok) throw new Error(`OpenRouter model list failed (HTTP ${r.status})`);
+    const j = await r.json();
+    const list = (j.data || [])
+      .filter(m => (m.pricing || {}).prompt === '0' && (m.pricing || {}).completion === '0')
+      .filter(m => ((m.architecture || {}).input_modalities || []).includes('image'))
+      .filter(m => /:free$/.test(m.id) || m.id === 'openrouter/free')
+      .filter(m => !/(safety|guard|lyria|tts|audio)/i.test(m.id))
+      .map(m => m.id).sort();
+    // Put the router and Google's Gemma first: they are the most reliable free picks.
+    const pref = ['google/gemma-4-31b-it:free', 'google/gemma-4-26b-a4b-it:free', 'openrouter/free'];
+    return [...pref.filter(x => list.includes(x)), ...list.filter(x => !pref.includes(x))];
+  }
+  async function openrouterAnalyze(cfg, { imageB64, text, previous, correction }) {
+    const content = [{ type: 'text', text: userPrompt({ text, previous, correction }) }];
+    if (imageB64) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + imageB64 } });
+    const body = {
+      model: cfg.openrouterModel || 'openrouter/free',
+      temperature: 0.2,
+      max_tokens: 2000,
+      messages: [
+        { role: 'system', content: SYSTEM + '\nThe JSON must have exactly these keys: is_food (boolean), name (string), items (array of {name, amount, calories, protein_g, carbs_g, fat_g}), health_score (integer 1-10), confidence ("low"|"medium"|"high"), notes (string). No markdown, no code fences, no text before or after the JSON.' },
+        { role: 'user', content },
+      ],
+    };
+    const r = await fetch(`${OR_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.openrouterKey, 'HTTP-Referer': location.origin, 'X-OpenRouter-Title': 'Cal Photo' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const j = await r.json(); msg = (j.error && j.error.message) || msg; } catch (e) {}
+      if (r.status === 401) throw new Error('OpenRouter rejected the API key. Check it in Settings. (' + msg + ')');
+      if (r.status === 402) throw new Error('That model is not free. Pick a model ending in ":free" in Settings. (' + msg + ')');
+      if (r.status === 429) throw new Error('OpenRouter free limit hit (20 per minute, 50 per day). Wait and retry, or pick another free model. (' + msg + ')');
+      if (r.status === 404) throw new Error('Model not available right now. Pick another free model in Settings. (' + msg + ')');
+      throw new Error(`OpenRouter error ${r.status}: ${msg}`);
+    }
+    const j = await r.json();
+    const choice = j.choices && j.choices[0];
+    if (!choice || !choice.message) throw new Error('OpenRouter returned no answer.' + (j.error ? ' ' + j.error.message : ''));
+    let txt = choice.message.content;
+    if (Array.isArray(txt)) txt = txt.map(p => p.text || '').join('');
+    return normalize(parseJsonLoose(txt || ''));
+  }
+
   // ---------- Claude (optional, paid) ----------
   async function claudeAnalyze(cfg, { imageB64, text, previous, correction }) {
     const content = [];
@@ -204,19 +254,17 @@ Return only the JSON object.`;
   // ---------- public ----------
   function ready(cfg) {
     if (cfg.provider === 'claude') return !!cfg.claudeKey;
+    if (cfg.provider === 'openrouter') return !!cfg.openrouterKey;
     return !!cfg.geminiKey;
   }
   async function analyze(cfg, input) {
     if (!ready(cfg)) throw new Error('No API key set. Add one in Settings.');
     if (cfg.provider === 'claude') return claudeAnalyze(cfg, input);
+    if (cfg.provider === 'openrouter') return openrouterAnalyze(cfg, input);
     return geminiAnalyze(cfg, input);
   }
   async function test(cfg) {
-    if (cfg.provider === 'claude') {
-      const res = await claudeAnalyze(cfg, { text: 'one medium banana' });
-      return `OK. Test answer: ${res.name}, ${sum(res.items).calories} kcal`;
-    }
-    const res = await geminiAnalyze(cfg, { text: 'one medium banana' });
+    const res = await analyze(cfg, { text: 'one medium banana' });
     return `OK. Test answer: ${res.name}, ${sum(res.items).calories} kcal`;
   }
   function sum(items) {
@@ -248,5 +296,5 @@ Return only the JSON object.`;
     };
   }
 
-  return { prepareImage, b64Of, analyze, test, sum, geminiListModels, barcodeLookup };
+  return { prepareImage, b64Of, analyze, test, sum, geminiListModels, openrouterListModels, barcodeLookup };
 })();

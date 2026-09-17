@@ -11,7 +11,7 @@
   const S = {
     profile: LS.get('profile', null),
     goals: LS.get('goals', null),
-    settings: LS.get('settings', { provider: 'gemini', geminiKey: '', geminiModel: 'gemini-2.5-flash', claudeKey: '', claudeModel: 'claude-opus-5' }),
+    settings: LS.get('settings', { provider: 'gemini', geminiKey: '', geminiModel: 'gemini-2.5-flash', openrouterKey: '', openrouterModel: 'openrouter/free', claudeKey: '', claudeModel: 'claude-opus-5' }),
     weights: LS.get('weights', []),
     selectedDate: ymd(new Date()),
     cur: null,       // meal being viewed/edited on the result screen
@@ -211,7 +211,7 @@
     $('opt-barcode').onclick = () => { openSheet(false); barcodeFlow(); };
     $('opt-manual').onclick = () => { openSheet(false); manualFlow(); };
   }
-  function hasKey() { const s = S.settings; return !!(s.provider === 'claude' ? s.claudeKey : s.geminiKey); }
+  function hasKey() { const s = S.settings; return !!(s.provider === 'claude' ? s.claudeKey : s.provider === 'openrouter' ? s.openrouterKey : s.geminiKey); }
   function newMeal(extra) {
     const now = new Date();
     const time = S.selectedDate === ymd(now) ? now.toISOString() : new Date(fromYmd(S.selectedDate).setHours(now.getHours(), now.getMinutes())).toISOString();
@@ -464,12 +464,15 @@
     $('set-activity').value = String(p.activity); $('set-goal').value = p.goal; $('set-rate').value = p.rate || 0.5; $('set-units').value = p.units || 'metric';
     $('set-provider').value = s.provider || 'gemini';
     $('set-gemini-key').value = s.geminiKey || ''; $('set-claude-key').value = s.claudeKey || ''; $('set-claude-model').value = s.claudeModel || 'claude-opus-5';
-    setModelOptions([s.geminiModel || 'gemini-2.5-flash'], s.geminiModel || 'gemini-2.5-flash');
+    setModelOptions('set-gemini-model', [s.geminiModel || 'gemini-2.5-flash'], s.geminiModel || 'gemini-2.5-flash');
+    $('set-or-key').value = s.openrouterKey || '';
+    setModelOptions('set-or-model', [s.openrouterModel || 'openrouter/free'], s.openrouterModel || 'openrouter/free');
     toggleProvider();
+    if ((s.provider || 'gemini') === 'openrouter') refreshOrModels();
     $('version-line').textContent = `Cal Photo v${VERSION} · data stays on this device`;
   }
-  function setModelOptions(list, selected) {
-    const sel = $('set-gemini-model'); sel.innerHTML = '';
+  function setModelOptions(id, list, selected) {
+    const sel = $(id); sel.innerHTML = '';
     const all = Array.from(new Set([selected, ...list].filter(Boolean)));
     all.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o); });
     sel.value = selected;
@@ -477,10 +480,21 @@
   function toggleProvider() {
     const v = $('set-provider').value;
     $('prov-gemini').classList.toggle('hidden', v !== 'gemini'); $('prov-claude').classList.toggle('hidden', v !== 'claude');
+    $('prov-openrouter').classList.toggle('hidden', v !== 'openrouter');
+    if (v === 'openrouter' && $('set-or-model').options.length < 2) refreshOrModels();
+  }
+  async function refreshOrModels() {
+    try {
+      const list = await AI.openrouterListModels();
+      if (!list.length) return;
+      const saved = S.settings.openrouterModel;
+      setModelOptions('set-or-model', list, (saved && saved !== 'openrouter/free' && list.includes(saved)) ? saved : list[0]);
+    } catch (e) { /* keep whatever is in the dropdown */ }
   }
   function readAiSettings() {
     return Object.assign({}, S.settings, {
       provider: $('set-provider').value, geminiKey: $('set-gemini-key').value.trim(), geminiModel: $('set-gemini-model').value || 'gemini-2.5-flash',
+      openrouterKey: $('set-or-key').value.trim(), openrouterModel: $('set-or-model').value || 'openrouter/free',
       claudeKey: $('set-claude-key').value.trim(), claudeModel: $('set-claude-model').value.trim() || 'claude-opus-5',
     });
   }
@@ -545,7 +559,7 @@
     try {
       const list = await AI.geminiListModels(key);
       const cur = $('set-gemini-model').value;
-      setModelOptions(list, list.includes(cur) ? cur : (list.includes('gemini-2.5-flash') ? 'gemini-2.5-flash' : list[0]));
+      setModelOptions('set-gemini-model', list, list.includes(cur) ? cur : (list.includes('gemini-2.5-flash') ? 'gemini-2.5-flash' : list[0]));
     } catch (e) { if (loud) throw e; }
   }
 

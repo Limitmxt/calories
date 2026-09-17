@@ -95,7 +95,7 @@
           <label>Gemini API key<input type="password" id="ob-gemini-key" placeholder="AIza..." autocomplete="off"></label>
           <button class="btn-secondary" id="ob-test-key">Test key</button>
           <p id="ob-key-status" class="small"></p>
-          <p class="muted small">You can skip this and add the key later in Settings. Without it, photo scanning will not work but manual logging will.</p>
+          <p class="muted small">You can skip this and add the key later in Settings. If Google refuses your key, Settings also offers OpenRouter, which is free too. Without a key, photo scanning will not work but manual logging will.</p>
         </div>
 
         <div class="ob-page" data-page="6">
@@ -225,12 +225,18 @@
         <div class="card-head"><b>Photo AI</b></div>
         <label>Provider<select id="set-provider">
           <option value="gemini">Google Gemini (free tier)</option>
+          <option value="openrouter">OpenRouter (free models, no card)</option>
           <option value="claude">Anthropic Claude (paid, per photo)</option>
         </select></label>
         <div id="prov-gemini">
           <label>Gemini API key<input type="password" id="set-gemini-key" placeholder="AIza..." autocomplete="off"></label>
           <label>Model<select id="set-gemini-model"><option value="gemini-2.5-flash">gemini-2.5-flash</option></select></label>
           <p class="muted small">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Free-tier limits are per model and shown at <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">aistudio.google.com/rate-limit</a>.</p>
+        </div>
+        <div id="prov-openrouter" class="hidden">
+          <label>OpenRouter API key<input type="password" id="set-or-key" placeholder="sk-or-v1-..." autocomplete="off"></label>
+          <label>Model (free ones only)<select id="set-or-model"><option value="openrouter/free">openrouter/free</option></select></label>
+          <p class="muted small">Sign up at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> (Google or email login, no card), then create a key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. Free models allow 50 requests a day. Quality is a step below Gemini but fine for meals.</p>
         </div>
         <div id="prov-claude" class="hidden">
           <label>Anthropic API key<input type="password" id="set-claude-key" placeholder="sk-ant-..." autocomplete="off"></label>

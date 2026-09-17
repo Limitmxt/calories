@@ -38,6 +38,14 @@ Do **not** add billing to the Google Cloud project behind the key. Without billi
 - Settings: goals, personal details, AI provider and model, backup export / import, wipe.
 - Works offline for viewing and manual logging (service worker). Photo analysis needs a connection.
 
+### Gemini not working? Use OpenRouter (also free)
+If Google refuses your key ("permission denied", region errors, work account restrictions):
+1. Sign up at https://openrouter.ai with Google or email. No card.
+2. Create a key at https://openrouter.ai/keys.
+3. In the app: **Settings → Photo AI → Provider → OpenRouter**, paste the key, keep the suggested free model, tap **Test connection**, then **Save**.
+
+Free models allow 50 requests a day and 20 a minute. Quality is a step below Gemini but fine for meals.
+
 ## Honest notes on accuracy
 Photo calorie estimation is a guess about portion size. Cal AI itself is typically off by 10 to 30 percent on mixed dishes, and so is this. Use **Fix results** when the portion looks wrong, and use barcode or manual entry for packaged food where exact numbers exist.
 
