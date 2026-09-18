@@ -184,13 +184,26 @@ Return only the JSON object.`;
     const pref = ['google/gemma-4-31b-it:free', 'google/gemma-4-26b-a4b-it:free', 'openrouter/free'];
     return [...pref.filter(x => list.includes(x)), ...list.filter(x => !pref.includes(x))];
   }
-  async function openrouterAnalyze(cfg, { imageB64, text, previous, correction }) {
+  let orModelCache = null;
+  async function orModels() {
+    if (!orModelCache) { try { orModelCache = await openrouterListModels(); } catch (e) { orModelCache = []; } }
+    return orModelCache;
+  }
+  function orError(status, msg) {
+    const e = new Error(msg); e.retryable = false;
+    if (status === 401) e.message = 'OpenRouter rejected the API key. Check it in Settings. (' + msg + ')';
+    else if (status === 402) e.message = 'That model is not free. Pick a model ending in ":free" in Settings. (' + msg + ')';
+    else if (status === 404 && /data policy|privacy/i.test(msg)) e.message = 'OpenRouter blocks free models until you allow them: open openrouter.ai/settings/privacy and turn on "Enable free endpoints that may train on inputs". (' + msg + ')';
+    else if (status === 429 && /per-day|per day|daily/i.test(msg)) e.message = 'Your OpenRouter free allowance for today (50 requests) is used up. It resets at midnight UTC. (' + msg + ')';
+    else if (status === 429 || status === 404 || status === 408 || status >= 500) { e.message = msg; e.retryable = true; }
+    else e.message = `OpenRouter error ${status}: ${msg}`;
+    return e;
+  }
+  async function orOnce(cfg, model, { imageB64, text, previous, correction }) {
     const content = [{ type: 'text', text: userPrompt({ text, previous, correction }) }];
     if (imageB64) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + imageB64 } });
     const body = {
-      model: cfg.openrouterModel || 'openrouter/free',
-      temperature: 0.2,
-      max_tokens: 2000,
+      model, temperature: 0.2, max_tokens: 2000,
       messages: [
         { role: 'system', content: SYSTEM + '\nThe JSON must have exactly these keys: is_food (boolean), name (string), items (array of {name, amount, calories, protein_g, carbs_g, fat_g}), health_score (integer 1-10), confidence ("low"|"medium"|"high"), notes (string). No markdown, no code fences, no text before or after the JSON.' },
         { role: 'user', content },
@@ -201,21 +214,27 @@ Return only the JSON object.`;
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.openrouterKey, 'HTTP-Referer': location.origin, 'X-OpenRouter-Title': 'Cal Photo' },
       body: JSON.stringify(body),
     });
-    if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try { const j = await r.json(); msg = (j.error && j.error.message) || msg; } catch (e) {}
-      if (r.status === 401) throw new Error('OpenRouter rejected the API key. Check it in Settings. (' + msg + ')');
-      if (r.status === 402) throw new Error('That model is not free. Pick a model ending in ":free" in Settings. (' + msg + ')');
-      if (r.status === 429) throw new Error('OpenRouter free limit hit (20 per minute, 50 per day). Wait and retry, or pick another free model. (' + msg + ')');
-      if (r.status === 404) throw new Error('Model not available right now. Pick another free model in Settings. (' + msg + ')');
-      throw new Error(`OpenRouter error ${r.status}: ${msg}`);
-    }
-    const j = await r.json();
-    const choice = j.choices && j.choices[0];
-    if (!choice || !choice.message) throw new Error('OpenRouter returned no answer.' + (j.error ? ' ' + j.error.message : ''));
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw orError(r.status, (j && j.error && j.error.message) || `HTTP ${r.status}`);
+    if (j && j.error) throw orError(Number(j.error.code) || 500, j.error.message || 'unknown error');
+    const choice = j && j.choices && j.choices[0];
+    if (!choice || !choice.message) { const e = new Error('Model returned no answer'); e.retryable = true; throw e; }
     let txt = choice.message.content;
     if (Array.isArray(txt)) txt = txt.map(p => p.text || '').join('');
-    return normalize(parseJsonLoose(txt || ''));
+    try { return normalize(parseJsonLoose(txt || '')); }
+    catch (e) { e.retryable = true; throw e; }
+  }
+  // Free models are shared and often busy. Try the chosen model, then walk down the free list.
+  async function openrouterAnalyze(cfg, input) {
+    const primary = cfg.openrouterModel || 'openrouter/free';
+    const list = await orModels();
+    const candidates = [primary, ...list.filter(m => m !== primary)].slice(0, 6);
+    const errs = [];
+    for (const model of candidates) {
+      try { const res = await orOnce(cfg, model, input); res.model = model; return res; }
+      catch (e) { if (!e.retryable) throw e; errs.push(model.replace(/:free$/, '') + ': ' + e.message); }
+    }
+    throw new Error(`All ${candidates.length} free models were busy or failed. Wait a minute and try again.\n` + errs.join('\n'));
   }
 
   // ---------- Claude (optional, paid) ----------
@@ -265,7 +284,7 @@ Return only the JSON object.`;
   }
   async function test(cfg) {
     const res = await analyze(cfg, { text: 'one medium banana' });
-    return `OK. Test answer: ${res.name}, ${sum(res.items).calories} kcal`;
+    return `OK. Test answer: ${res.name}, ${sum(res.items).calories} kcal` + (res.model ? ` (via ${res.model})` : '');
   }
   function sum(items) {
     return items.reduce((a, i) => ({
