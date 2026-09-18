@@ -65,9 +65,39 @@ Return only the JSON object.`;
     c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
     return c.toDataURL('image/jpeg', quality);
   }
+  // iPhone photos are often HEIC, which browsers cannot decode. Convert in-browser on demand.
+  let heicLib = null;
+  function loadHeicLib() {
+    if (heicLib) return heicLib;
+    heicLib = new Promise((resolve, reject) => {
+      if (window.heic2any) return resolve(window.heic2any);
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+      sc.onload = () => window.heic2any ? resolve(window.heic2any) : reject(new Error('HEIC converter failed to load'));
+      sc.onerror = () => reject(new Error('Could not download the HEIC converter. Check your connection.'));
+      document.head.appendChild(sc);
+    }).catch(e => { heicLib = null; throw e; });
+    return heicLib;
+  }
+  function looksHeic(file) {
+    return /hei[cf]/i.test(file.type || '') || /\.hei[cf]$/i.test(file.name || '') || !file.type;
+  }
+  async function decodeAny(file, onStatus) {
+    try { return await fileToBitmap(file); }
+    catch (first) {
+      if (!looksHeic(file) && file.type) throw new Error('Could not read that image (' + (file.type || 'unknown type') + '). Try a JPEG or PNG.');
+      if (onStatus) onStatus('Converting HEIC photo…');
+      const heic2any = await loadHeicLib();
+      let blob;
+      try { blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 }); }
+      catch (e) { throw new Error('Could not read that image. If it is an iPhone photo, set Settings → Camera → Formats → Most Compatible, or take the photo with the in-app camera.'); }
+      if (Array.isArray(blob)) blob = blob[0];
+      return fileToBitmap(blob);
+    }
+  }
   // Returns { full: dataURL (<=1280px), thumb: dataURL (<=360px) }
-  async function prepareImage(file) {
-    const bmp = await fileToBitmap(file);
+  async function prepareImage(file, onStatus) {
+    const bmp = await decodeAny(file, onStatus);
     const full = drawScaled(bmp, 1280, 0.85);
     const thumb = drawScaled(bmp, 360, 0.8);
     if (bmp.close) bmp.close();

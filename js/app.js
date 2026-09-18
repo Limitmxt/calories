@@ -243,7 +243,7 @@
     if (!hasKey()) { toast('Add your Gemini API key in Settings first.'); return; }
     loading(true, 'Preparing photo…');
     try {
-      const img = await AI.prepareImage(file);
+      const img = await AI.prepareImage(file, (t) => loading(true, t));
       loading(true, 'Analyzing…');
       const res = await AI.analyze(S.settings, { imageB64: AI.b64Of(img.full) });
       loading(false);
