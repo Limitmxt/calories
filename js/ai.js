@@ -44,21 +44,65 @@ Return only the JSON object.`;
   };
 
   // ---------- image helpers ----------
-  async function fileToBitmap(file) {
+  const MAX_DIM = 1280;
+  // Cheap header parse for JPEG / PNG / WebP dimensions so huge photos can be decoded pre-scaled.
+  async function headerDims(file) {
     try {
-      return await createImageBitmap(file, { imageOrientation: 'from-image' });
-    } catch (e) {
-      return new Promise((resolve, reject) => {
-        const url = URL.createObjectURL(file);
-        const img = new Image();
-        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
-        img.src = url;
-      });
-    }
+      const buf = new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer());
+      const dv = new DataView(buf.buffer);
+      if (buf[0] === 0xFF && buf[1] === 0xD8) { // JPEG: walk segments to SOFn
+        let i = 2;
+        while (i + 9 < buf.length) {
+          if (buf[i] !== 0xFF) { i++; continue; }
+          const m = buf[i + 1];
+          if (m === 0xD8 || (m >= 0xD0 && m <= 0xD7) || m === 0x01 || m === 0xFF) { i += 2; continue; }
+          const len = dv.getUint16(i + 2);
+          if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) return { w: dv.getUint16(i + 7), h: dv.getUint16(i + 5) };
+          i += 2 + len;
+        }
+      } else if (buf[0] === 0x89 && buf[1] === 0x50 && buf.length > 24) {
+        return { w: dv.getUint32(16), h: dv.getUint32(20) };
+      } else if (buf[0] === 0x52 && buf[1] === 0x49 && buf[8] === 0x57 && buf.length > 30) { // WebP VP8/VP8L/VP8X
+        const tag = String.fromCharCode(buf[12], buf[13], buf[14], buf[15]);
+        if (tag === 'VP8X') return { w: 1 + (buf[24] | buf[25] << 8 | buf[26] << 16), h: 1 + (buf[27] | buf[28] << 8 | buf[29] << 16) };
+        if (tag === 'VP8 ') return { w: dv.getUint16(26, true) & 0x3FFF, h: dv.getUint16(28, true) & 0x3FFF };
+        if (tag === 'VP8L') { const b = buf; return { w: 1 + ((b[21] | b[22] << 8) & 0x3FFF), h: 1 + (((b[22] >> 6) | b[23] << 2 | (b[24] & 0x0F) << 10) & 0x3FFF) }; }
+      }
+    } catch (e) {}
+    return null;
+  }
+  function resizeOpts(dims) {
+    if (!dims || !(dims.w > 0 && dims.h > 0)) return {};
+    const scale = MAX_DIM / Math.max(dims.w, dims.h);
+    if (scale >= 1) return {};
+    return { resizeWidth: Math.round(dims.w * scale), resizeHeight: Math.round(dims.h * scale), resizeQuality: 'high' };
+  }
+  async function fileToBitmap(file) {
+    const dims = await headerDims(file);
+    const big = dims && dims.w * dims.h > 16e6; // over ~16 MP: decode pre-scaled to avoid mobile memory failures
+    const attempts = [];
+    if (big) attempts.push(() => createImageBitmap(file, Object.assign({ imageOrientation: 'from-image' }, resizeOpts(dims))));
+    attempts.push(() => createImageBitmap(file, { imageOrientation: 'from-image' }));
+    if (!big) attempts.push(() => createImageBitmap(file, Object.assign({ imageOrientation: 'from-image' }, resizeOpts(dims) || {})));
+    attempts.push(() => createImageBitmap(file));
+    attempts.push(() => createImageBitmap(file, { resizeWidth: MAX_DIM, resizeQuality: 'high' }));
+    attempts.push(() => new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img element decode failed')); };
+      img.src = url;
+    }));
+    let last = null;
+    for (const a of attempts) { try { return await a(); } catch (e) { last = e; } }
+    throw last || new Error('decode failed');
+  }
+  function describeFile(file) {
+    const mb = (file.size / 1048576).toFixed(1);
+    return `${file.type || 'unknown type'}, ${mb} MB${file.name ? ', ' + file.name : ''}`;
   }
   function drawScaled(src, max, quality) {
-    const w = src.width, h = src.height;
+    const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height;
     const scale = Math.min(1, max / Math.max(w, h));
     const c = document.createElement('canvas');
     c.width = Math.round(w * scale); c.height = Math.round(h * scale);
@@ -85,12 +129,12 @@ Return only the JSON object.`;
   async function decodeAny(file, onStatus) {
     try { return await fileToBitmap(file); }
     catch (first) {
-      if (!looksHeic(file) && file.type) throw new Error('Could not read that image (' + (file.type || 'unknown type') + '). Try a JPEG or PNG.');
+      if (!looksHeic(file) && file.type) throw new Error('Could not read that image (' + describeFile(file) + '). Try the in-app camera, or a JPEG or PNG.');
       if (onStatus) onStatus('Converting HEIC photo…');
       const heic2any = await loadHeicLib();
       let blob;
       try { blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 }); }
-      catch (e) { throw new Error('Could not read that image. If it is an iPhone photo, set Settings → Camera → Formats → Most Compatible, or take the photo with the in-app camera.'); }
+      catch (e) { throw new Error('Could not read that image (' + describeFile(file) + '). If it is a HEIF/HEIC photo, switch the camera to JPEG in its settings, or use the in-app camera.'); }
       if (Array.isArray(blob)) blob = blob[0];
       return fileToBitmap(blob);
     }
