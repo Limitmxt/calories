@@ -1,5 +1,5 @@
 /* Offline shell cache. API calls go to the network directly. Bump CACHE when files change. */
-const CACHE = 'calphoto-v7';
+const CACHE = 'calphoto-v8';
 const SHELL = ['./', './index.html', './css/styles.css', './js/db.js', './js/nutrition.js', './js/ai.js', './js/app.js', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -13,7 +13,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin || e.request.method !== 'GET') return; // never touch API traffic
   // network first for the shell so updates land quickly, cache fallback for offline
   e.respondWith(
-    fetch(e.request).then(res => {
+    fetch(e.request, { cache: 'no-cache' }).then(res => {
       const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return res;
     }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );

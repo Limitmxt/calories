@@ -6,7 +6,8 @@
     set(k, v) { localStorage.setItem('cp.' + k, JSON.stringify(v)); },
     del(k) { localStorage.removeItem('cp.' + k); },
   };
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
+  const BUILD = '2026-09-18.3';
 
   const S = {
     profile: LS.get('profile', null),
@@ -242,14 +243,16 @@
   async function handlePhoto(file) {
     if (!hasKey()) { toast('Add your Gemini API key in Settings first.'); return; }
     loading(true, 'Preparing photo…');
+    Diag.log(`--- photo picked (${S.settings.provider}) build ${BUILD}`);
     try {
       const img = await AI.prepareImage(file, (t) => loading(true, t));
       loading(true, 'Analyzing…');
       const res = await AI.analyze(S.settings, { imageB64: AI.b64Of(img.full) });
+      Diag.log(`analysis ok: ${res.name}, ${res.items.length} items`);
       loading(false);
       if (!res.isFood || !res.items.length) toast('No food detected. You can add items by hand or tap Fix results.');
       openResult(newMeal({ name: res.name, items: res.items, healthScore: res.healthScore, notes: res.notes, confidence: res.confidence, imageThumb: img.thumb, imageFull: img.full, source: 'photo' }), true);
-    } catch (e) { loading(false); toast(e.message, 5000); }
+    } catch (e) { loading(false); Diag.log('FAILED: ' + e.message); toast(e.message + ' — details in Settings → Diagnostics', 7000); }
   }
   function describeFlow() {
     if (!hasKey()) { toast('Add your Gemini API key in Settings first.'); return; }
@@ -491,7 +494,9 @@
     setModelOptions('set-or-model', [s.openrouterModel || 'openrouter/free'], s.openrouterModel || 'openrouter/free');
     toggleProvider();
     if ((s.provider || 'gemini') === 'openrouter') refreshOrModels();
-    $('version-line').textContent = `Cal Photo v${VERSION} · data stays on this device`;
+    $('version-line').textContent = `Cal Photo v${VERSION} build ${BUILD} · data stays on this device`;
+    $('diag-build').textContent = `Build ${BUILD} · ${navigator.userAgent}`;
+    $('diag-log').value = Diag.text() || '(nothing logged yet)';
   }
   function setModelOptions(id, list, selected) {
     const sel = $(id); sel.innerHTML = '';
@@ -571,6 +576,12 @@
         toast('Imported.'); renderSettings();
       } catch (err) { toast('Import failed: ' + err.message, 4000); }
     };
+    $('diag-copy').onclick = async () => {
+      const txt = `Cal Photo build ${BUILD}\n${navigator.userAgent}\nprovider=${S.settings.provider} model=${S.settings.provider === 'openrouter' ? S.settings.openrouterModel : S.settings.geminiModel}\n\n${Diag.text()}`;
+      try { await navigator.clipboard.writeText(txt); toast('Copied. Paste it in the chat.'); }
+      catch (e) { $('diag-log').value = txt; $('diag-log').select(); toast('Select all the text in the box and copy it.'); }
+    };
+    $('diag-clear').onclick = () => { Diag.clear(); $('diag-log').value = ''; };
     $('wipe-btn').onclick = async () => {
       if (!(await confirmDlg('Delete everything?', 'All meals, photos, weights, goals and keys on this device will be erased.', 'Delete all', true))) return;
       await DB.clear(); ['profile', 'goals', 'settings', 'weights'].forEach(LS.del); location.reload();

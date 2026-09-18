@@ -1,3 +1,15 @@
+/* Diagnostics ring buffer, shown in Settings so failures can be reported exactly. */
+const Diag = {
+  entries: (() => { try { return JSON.parse(localStorage.getItem('cp.diag') || '[]'); } catch (e) { return []; } })(),
+  log(msg) {
+    const line = new Date().toISOString().slice(11, 19) + ' ' + String(msg).slice(0, 400);
+    this.entries.push(line); if (this.entries.length > 60) this.entries.shift();
+    try { localStorage.setItem('cp.diag', JSON.stringify(this.entries)); } catch (e) {}
+  },
+  text() { return this.entries.join('\n'); },
+  clear() { this.entries = []; try { localStorage.removeItem('cp.diag'); } catch (e) {} },
+};
+
 /* Photo / text analysis providers. Gemini (free tier) is the default. Claude is optional and paid. */
 const AI = (() => {
   const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -93,8 +105,12 @@ Return only the JSON object.`;
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img element decode failed')); };
       img.src = url;
     }));
+    Diag.log(`decode: ${describeFile(file)}; header dims ${dims ? dims.w + 'x' + dims.h : 'unknown'}${big ? ' (big, pre-scaled)' : ''}`);
     let last = null;
-    for (const a of attempts) { try { return await a(); } catch (e) { last = e; } }
+    for (let i = 0; i < attempts.length; i++) {
+      try { const r = await attempts[i](); Diag.log(`decode ok via attempt ${i + 1}: ${r.width || r.naturalWidth}x${r.height || r.naturalHeight}`); return r; }
+      catch (e) { last = e; Diag.log(`decode attempt ${i + 1} failed: ${e && e.message}`); }
+    }
     throw last || new Error('decode failed');
   }
   function describeFile(file) {
@@ -131,10 +147,11 @@ Return only the JSON object.`;
     catch (first) {
       if (!looksHeic(file) && file.type) throw new Error('Could not read that image (' + describeFile(file) + '). Try the in-app camera, or a JPEG or PNG.');
       if (onStatus) onStatus('Converting HEIC photo…');
+      Diag.log('trying HEIC conversion');
       const heic2any = await loadHeicLib();
       let blob;
       try { blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 }); }
-      catch (e) { throw new Error('Could not read that image (' + describeFile(file) + '). If it is a HEIF/HEIC photo, switch the camera to JPEG in its settings, or use the in-app camera.'); }
+      catch (e) { Diag.log('HEIC conversion failed: ' + (e && (e.message || JSON.stringify(e)))); throw new Error('Could not read that image (' + describeFile(file) + '). If it is a HEIF/HEIC photo, switch the camera to JPEG in its settings, or use the in-app camera.'); }
       if (Array.isArray(blob)) blob = blob[0];
       return fileToBitmap(blob);
     }
@@ -145,6 +162,7 @@ Return only the JSON object.`;
     const full = drawScaled(bmp, 1280, 0.85);
     const thumb = drawScaled(bmp, 360, 0.8);
     if (bmp.close) bmp.close();
+    Diag.log(`prepared: full ${Math.round(full.length * 0.75 / 1024)} KB, thumb ${Math.round(thumb.length * 0.75 / 1024)} KB`);
     return { full, thumb };
   }
   function b64Of(dataUrl) { return dataUrl.split(',')[1]; }
@@ -227,13 +245,15 @@ Return only the JSON object.`;
       },
     };
     const model = cfg.geminiModel || 'gemini-2.5-flash';
+    Diag.log(`gemini request: ${model}, image=${!!imageB64}`);
     const r = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.geminiKey },
       body: JSON.stringify(body),
     });
-    if (!r.ok) throw new Error(await geminiErr(r));
+    if (!r.ok) { const m = await geminiErr(r); Diag.log(`gemini ${r.status}: ${m}`); throw new Error(m); }
     const j = await r.json();
+    Diag.log('gemini ok');
     const cand = j.candidates && j.candidates[0];
     if (!cand) {
       const why = j.promptFeedback && j.promptFeedback.blockReason;
@@ -289,6 +309,7 @@ Return only the JSON object.`;
       body: JSON.stringify(body),
     });
     let j = null; try { j = await r.json(); } catch (e) {}
+    Diag.log(`openrouter ${model}: HTTP ${r.status}${j && j.error ? ' error: ' + (j.error.message || '').slice(0, 160) : ''}`);
     if (!r.ok) throw orError(r.status, (j && j.error && j.error.message) || `HTTP ${r.status}`);
     if (j && j.error) throw orError(Number(j.error.code) || 500, j.error.message || 'unknown error');
     const choice = j && j.choices && j.choices[0];
@@ -296,7 +317,7 @@ Return only the JSON object.`;
     let txt = choice.message.content;
     if (Array.isArray(txt)) txt = txt.map(p => p.text || '').join('');
     try { return normalize(parseJsonLoose(txt || '')); }
-    catch (e) { e.retryable = true; throw e; }
+    catch (e) { Diag.log('openrouter unparseable reply: ' + String(txt || '').slice(0, 160)); e.retryable = true; throw e; }
   }
   // Free models are shared and often busy. Try the chosen model, then walk down the free list.
   async function openrouterAnalyze(cfg, input) {
