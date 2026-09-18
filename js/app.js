@@ -7,7 +7,7 @@
     del(k) { localStorage.removeItem('cp.' + k); },
   };
   const VERSION = '1.1.0';
-  const BUILD = '2026-09-18.4';
+  const BUILD = '2026-09-18.5';
 
   const S = {
     profile: LS.get('profile', null),
@@ -252,7 +252,23 @@
       loading(false);
       if (!res.isFood || !res.items.length) toast('No food detected. You can add items by hand or tap Fix results.');
       openResult(newMeal({ name: res.name, items: res.items, healthScore: res.healthScore, notes: res.notes, confidence: res.confidence, imageThumb: img.thumb, imageFull: img.full, source: 'photo' }), true);
-    } catch (e) { loading(false); Diag.log('FAILED: ' + e.message); toast(e.message + ' — details in Settings → Diagnostics', 7000); }
+    } catch (e) { loading(false); Diag.log('FAILED: ' + e.message); failDialog(e.message); }
+  }
+  function diagText() {
+    return `Cal Photo build ${BUILD}\n${navigator.userAgent}\nprovider=${S.settings.provider} model=${S.settings.provider === 'openrouter' ? S.settings.openrouterModel : S.settings.geminiModel}\n\n${Diag.text()}`;
+  }
+  async function copyDiag() {
+    try { await navigator.clipboard.writeText(diagText()); toast('Copied. Paste it in the chat.'); return true; }
+    catch (e) { return false; }
+  }
+  function failDialog(msg) {
+    const b = modal(`<h3>That did not work</h3><p class="muted small">${esc(msg)}</p><div class="row-btns"><button class="btn-secondary" id="m-cancel">Close</button><button class="btn-primary" id="m-copy" style="margin-top:0">Copy details</button></div><textarea id="m-diag" class="hidden" readonly style="margin-top:10px;min-height:140px;font-size:11px;font-family:monospace"></textarea>`);
+    b.querySelector('#m-cancel').onclick = closeModal;
+    b.querySelector('#m-copy').onclick = async () => {
+      if (await copyDiag()) return;
+      const ta = b.querySelector('#m-diag'); ta.classList.remove('hidden'); ta.value = diagText(); ta.focus(); ta.select();
+      toast('Long-press the text, Select all, Copy.');
+    };
   }
   function describeFlow() {
     if (!hasKey()) { toast('Add your Gemini API key in Settings first.'); return; }
@@ -577,9 +593,8 @@
       } catch (err) { toast('Import failed: ' + err.message, 4000); }
     };
     $('diag-copy').onclick = async () => {
-      const txt = `Cal Photo build ${BUILD}\n${navigator.userAgent}\nprovider=${S.settings.provider} model=${S.settings.provider === 'openrouter' ? S.settings.openrouterModel : S.settings.geminiModel}\n\n${Diag.text()}`;
-      try { await navigator.clipboard.writeText(txt); toast('Copied. Paste it in the chat.'); }
-      catch (e) { $('diag-log').value = txt; $('diag-log').select(); toast('Select all the text in the box and copy it.'); }
+      if (await copyDiag()) return;
+      $('diag-log').value = diagText(); $('diag-log').select(); toast('Long-press the text, Select all, Copy.');
     };
     $('diag-clear').onclick = () => { Diag.clear(); $('diag-log').value = ''; };
     $('wipe-btn').onclick = async () => {

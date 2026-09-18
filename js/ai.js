@@ -140,6 +140,41 @@ Return only the JSON object.`;
     }).catch(e => { heicLib = null; throw e; });
     return heicLib;
   }
+  let heifLib2 = null;
+  function loadHeifLib2() {
+    if (heifLib2) return heifLib2;
+    heifLib2 = new Promise((resolve, reject) => {
+      if (window.libheif) return resolve(window.libheif);
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/libheif-js@1.23.2/libheif-wasm/libheif-bundle.js';
+      sc.onload = () => window.libheif ? resolve(window.libheif) : reject(new Error('second HEIC decoder failed to load'));
+      sc.onerror = () => reject(new Error('could not download the second HEIC decoder'));
+      document.head.appendChild(sc);
+    }).then(async (raw) => {
+      // The wasm bundle exposes a module factory; await it to get the API.
+      const lib = (typeof raw === 'function') ? await raw() : raw;
+      if (!lib || !lib.HeifDecoder) throw new Error('second HEIC decoder has no HeifDecoder');
+      return lib;
+    }).catch(e => { heifLib2 = null; throw e; });
+    return heifLib2;
+  }
+  // Decode with libheif-js directly: returns a canvas (works like an ImageBitmap for drawImage).
+  async function decodeWithLibheif(file) {
+    const lib = await loadHeifLib2();
+    const buf = await file.arrayBuffer();
+    const decoder = new lib.HeifDecoder();
+    const images = decoder.decode(buf);
+    if (!images || !images.length) throw new Error('libheif found no image');
+    const img = images[0];
+    const w = img.get_width(), h = img.get_height();
+    const imageData = await new Promise((resolve, reject) => {
+      img.display({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }, (d) => d ? resolve(d) : reject(new Error('libheif display failed')));
+    });
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').putImageData(new ImageData(imageData.data, w, h), 0, 0);
+    try { images.forEach(i => i.free && i.free()); } catch (e) {}
+    return c;
+  }
   function looksHeic(file) {
     return /hei[cf]/i.test(file.type || '') || /\.hei[cf]$/i.test(file.name || '') || !file.type;
   }
@@ -149,12 +184,22 @@ Return only the JSON object.`;
       if (!looksHeic(file) && file.type) throw new Error('Could not read that image (' + describeFile(file) + '). Try the in-app camera, or a JPEG or PNG.');
       if (onStatus) onStatus('Converting HEIC photo…');
       Diag.log('trying HEIC conversion');
-      const HeicTo = await loadHeicLib();
-      let blob;
-      try { blob = await HeicTo({ blob: file, type: 'image/jpeg', quality: 0.9 }); Diag.log(`HEIC converted: ${blob && blob.type}, ${blob && Math.round(blob.size / 1024)} KB`); }
-      catch (e) { Diag.log('HEIC conversion failed: ' + (e && (e.message || JSON.stringify(e)))); throw new Error('Could not read that image (' + describeFile(file) + '). If it is a HEIF/HEIC photo, switch the camera to JPEG in its settings, or use the in-app camera.'); }
-      if (Array.isArray(blob)) blob = blob[0];
-      return fileToBitmap(blob);
+      // Decoder 1: libheif-js (current libheif, fast)
+      try {
+        const canvas = await decodeWithLibheif(file);
+        Diag.log(`HEIC decoded (libheif-js): ${canvas.width}x${canvas.height}`);
+        return canvas;
+      } catch (e) { Diag.log('libheif-js failed: ' + (e && (e.message || JSON.stringify(e)))); }
+      // Decoder 2: heic-to (independent build)
+      if (onStatus) onStatus('Converting HEIC photo (2nd decoder)…');
+      try {
+        const HeicTo = await loadHeicLib();
+        let blob = await HeicTo({ blob: file, type: 'image/jpeg', quality: 0.9 });
+        if (Array.isArray(blob)) blob = blob[0];
+        Diag.log(`HEIC converted (heic-to): ${blob && blob.type}, ${blob && Math.round(blob.size / 1024)} KB`);
+        return await fileToBitmap(blob);
+      } catch (e) { Diag.log('heic-to failed: ' + (e && (e.message || e.code || JSON.stringify(e)))); }
+      throw new Error('Could not read that image (' + describeFile(file) + '). Both HEIC decoders failed. Tap "Copy details" and send them to me.');
     }
   }
   // Returns { full: dataURL (<=1280px), thumb: dataURL (<=360px) }
