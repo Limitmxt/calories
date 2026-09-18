@@ -7,7 +7,7 @@
     del(k) { localStorage.removeItem('cp.' + k); },
   };
   const VERSION = '1.1.0';
-  const BUILD = '2026-09-18.3';
+  const BUILD = '2026-09-18.4';
 
   const S = {
     profile: LS.get('profile', null),

@@ -125,16 +125,17 @@ Return only the JSON object.`;
     c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
     return c.toDataURL('image/jpeg', quality);
   }
-  // iPhone photos are often HEIC, which browsers cannot decode. Convert in-browser on demand.
+  // iPhone and Samsung photos are often HEIC, which browsers cannot decode. Convert in-browser on demand
+  // using heic-to (current libheif build). Loaded only when needed.
   let heicLib = null;
   function loadHeicLib() {
     if (heicLib) return heicLib;
     heicLib = new Promise((resolve, reject) => {
-      if (window.heic2any) return resolve(window.heic2any);
+      if (window.HeicTo) return resolve(window.HeicTo);
       const sc = document.createElement('script');
-      sc.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
-      sc.onload = () => window.heic2any ? resolve(window.heic2any) : reject(new Error('HEIC converter failed to load'));
-      sc.onerror = () => reject(new Error('Could not download the HEIC converter. Check your connection.'));
+      sc.src = 'https://cdn.jsdelivr.net/npm/heic-to@1.5.2/dist/iife/heic-to.js';
+      sc.onload = () => window.HeicTo ? resolve(window.HeicTo) : reject(new Error('HEIC converter failed to load'));
+      sc.onerror = () => reject(new Error('Could not download the HEIC converter (3 MB, once). Check your connection and retry.'));
       document.head.appendChild(sc);
     }).catch(e => { heicLib = null; throw e; });
     return heicLib;
@@ -148,9 +149,9 @@ Return only the JSON object.`;
       if (!looksHeic(file) && file.type) throw new Error('Could not read that image (' + describeFile(file) + '). Try the in-app camera, or a JPEG or PNG.');
       if (onStatus) onStatus('Converting HEIC photo…');
       Diag.log('trying HEIC conversion');
-      const heic2any = await loadHeicLib();
+      const HeicTo = await loadHeicLib();
       let blob;
-      try { blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 }); }
+      try { blob = await HeicTo({ blob: file, type: 'image/jpeg', quality: 0.9 }); Diag.log(`HEIC converted: ${blob && blob.type}, ${blob && Math.round(blob.size / 1024)} KB`); }
       catch (e) { Diag.log('HEIC conversion failed: ' + (e && (e.message || JSON.stringify(e)))); throw new Error('Could not read that image (' + describeFile(file) + '). If it is a HEIF/HEIC photo, switch the camera to JPEG in its settings, or use the in-app camera.'); }
       if (Array.isArray(blob)) blob = blob[0];
       return fileToBitmap(blob);
