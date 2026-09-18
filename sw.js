@@ -1,5 +1,5 @@
 /* Offline shell cache. API calls go to the network directly. Bump CACHE when files change. */
-const CACHE = 'calphoto-v3';
+const CACHE = 'calphoto-v4';
 const SHELL = ['./', './index.html', './css/styles.css', './js/db.js', './js/nutrition.js', './js/ai.js', './js/app.js', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

@@ -61,7 +61,7 @@
   }
 
   // ---------- onboarding ----------
-  const OB = { page: 0, data: { units: 'metric', gender: null, activity: null, goal: null, rate: 0.5 } };
+  const OB = { page: 0, data: { units: 'metric', gender: null, activity: null, goal: null, rate: 0.5, provider: 'gemini' } };
   const OB_PAGES = 7;
   function obRender() {
     document.querySelectorAll('.ob-page').forEach(p => p.classList.toggle('active', Number(p.dataset.page) === OB.page));
@@ -93,13 +93,17 @@
     if (OB.page === 4 && !d.goal) return 'Pick a goal.';
     return null;
   }
-  function obFinish() {
+  async function obFinish() {
     const p = obProfile();
     S.profile = p; LS.set('profile', p);
     S.goals = Nutrition.targets(p); LS.set('goals', S.goals);
     S.weights = [{ date: ymd(new Date()), kg: p.weightKg }]; LS.set('weights', S.weights);
-    const key = $('ob-gemini-key').value.trim();
-    if (key) { S.settings.geminiKey = key; S.settings.provider = 'gemini'; LS.set('settings', S.settings); }
+    const gKey = $('ob-gemini-key').value.trim(), oKey = $('ob-or-key').value.trim();
+    if (OB.data.provider === 'openrouter' && oKey) {
+      S.settings.openrouterKey = oKey; S.settings.provider = 'openrouter';
+      try { const list = await AI.openrouterListModels(); if (list.length) S.settings.openrouterModel = list[0]; } catch (e) {}
+    } else if (gKey) { S.settings.geminiKey = gKey; S.settings.provider = 'gemini'; }
+    LS.set('settings', S.settings);
     showScreen('home');
   }
   function bindOnboarding() {
@@ -123,9 +127,27 @@
       $('metric-fields').classList.toggle('hidden', OB.data.units !== 'metric');
       $('imperial-fields').classList.toggle('hidden', OB.data.units !== 'imperial');
     });
+    document.querySelectorAll('.seg[data-field=provider] .seg-btn').forEach(btn => btn.onclick = () => {
+      document.querySelectorAll('.seg[data-field=provider] .seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); OB.data.provider = btn.dataset.value;
+      $('ob-prov-gemini').classList.toggle('hidden', OB.data.provider !== 'gemini');
+      $('ob-prov-openrouter').classList.toggle('hidden', OB.data.provider !== 'openrouter');
+      $('ob-key-status').textContent = '';
+    });
     $('ob-rate').oninput = (e) => { OB.data.rate = Number(e.target.value); $('ob-rate-label').textContent = `${OB.data.rate.toFixed(1)} kg / week`; };
     $('ob-test-key').onclick = async () => {
-      const key = $('ob-gemini-key').value.trim(); const st = $('ob-key-status');
+      const st = $('ob-key-status'); st.style.color = '';
+      if (OB.data.provider === 'openrouter') {
+        const key = $('ob-or-key').value.trim(); if (!key) return toast('Paste a key first.');
+        st.textContent = 'Testing… (one real request)';
+        try {
+          let model = 'openrouter/free';
+          try { const list = await AI.openrouterListModels(); if (list.length) model = list[0]; } catch (e) {}
+          st.textContent = await AI.test({ provider: 'openrouter', openrouterKey: key, openrouterModel: model }); st.style.color = 'var(--ok)';
+        } catch (e) { st.textContent = e.message; st.style.color = 'var(--danger)'; }
+        return;
+      }
+      const key = $('ob-gemini-key').value.trim();
       if (!key) return toast('Paste a key first.');
       st.textContent = 'Testing…';
       try { const models = await AI.geminiListModels(key); st.textContent = `Key works. ${models.length} models available.`; st.style.color = 'var(--ok)'; }

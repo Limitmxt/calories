@@ -86,16 +86,30 @@
 
         <div class="ob-page" data-page="5">
           <h2>Connect the photo AI</h2>
-          <p class="muted">The app uses Google's Gemini API to read your photos. The free tier costs nothing and needs no card. Your key is stored only on this device.</p>
-          <ol class="steps">
-            <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account.</li>
-            <li>Tap <b>Create API key</b> and copy it.</li>
-            <li>Paste it below.</li>
-          </ol>
-          <label>Gemini API key<input type="password" id="ob-gemini-key" placeholder="AIza..." autocomplete="off"></label>
+          <p class="muted">Both options are free and need no card. Your key is stored only on this device.</p>
+          <div class="seg" data-field="provider">
+            <button class="seg-btn active" data-value="gemini">Google Gemini</button>
+            <button class="seg-btn" data-value="openrouter">OpenRouter</button>
+          </div>
+          <div id="ob-prov-gemini">
+            <ol class="steps">
+              <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account.</li>
+              <li>Tap <b>Create API key</b> and copy it.</li>
+              <li>Paste it below.</li>
+            </ol>
+            <label>Gemini API key<input type="password" id="ob-gemini-key" placeholder="AIza..." autocomplete="off"></label>
+          </div>
+          <div id="ob-prov-openrouter" class="hidden">
+            <ol class="steps">
+              <li>Sign in at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> with Google or email.</li>
+              <li>Open <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>, tap <b>Create Key</b>, copy it.</li>
+              <li>Paste it below. Free models allow 50 scans a day.</li>
+            </ol>
+            <label>OpenRouter API key<input type="password" id="ob-or-key" placeholder="sk-or-v1-..." autocomplete="off"></label>
+          </div>
           <button class="btn-secondary" id="ob-test-key">Test key</button>
           <p id="ob-key-status" class="small"></p>
-          <p class="muted small">You can skip this and add the key later in Settings. If Google refuses your key, Settings also offers OpenRouter, which is free too. Without a key, photo scanning will not work but manual logging will.</p>
+          <p class="muted small">You can skip this and add a key later in Settings. Without one, photo scanning will not work but manual logging will.</p>
         </div>
 
         <div class="ob-page" data-page="6">
